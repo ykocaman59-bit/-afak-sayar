@@ -5,7 +5,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   
-  // Uygulama açılmadan önce kaydedilmiş bir profil var mı diye kontrol edelim
   SharedPreferences prefs = await SharedPreferences.getInstance();
   bool kayitliMi = prefs.getBool('kayitliMi') ?? false;
 
@@ -25,7 +24,6 @@ class SafakSayarApp extends StatelessWidget {
         primarySwatch: Colors.orange,
         useMaterial3: true,
       ),
-      // Eğer daha önceden kayıt yapıldıysa doğrudan AnaŞafak ekranını aç, yoksa Kayıt ekranını aç
       home: kayitliMi ? const AnaSafakEkrani() : const ProfilKayitEkrani(),
     );
   }
@@ -58,7 +56,7 @@ class _ProfilKayitEkraniState extends State<ProfilKayitEkrani> {
     await prefs.setString('sevkTarihi', sevkTarihi.toIso8601String());
     await prefs.setBool('kayitliMi', true);
 
-    // Ana ekrana yönlendir ve geri dönüşü engelle
+    if (!mounted) return;
     Navigator.pushReplacement(
       context,
       MaterialPageRoute(builder: (context) => const AnaSafakEkrani()),
@@ -106,7 +104,6 @@ class _ProfilKayitEkraniState extends State<ProfilKayitEkrani> {
                   initialDate: sevkTarihi,
                   firstDate: DateTime(2020),
                   lastDate: DateTime(2030),
-                  locale: const Locale('tr', 'TR'), // Türkçe takvim desteği
                 );
                 if (secilen != null) {
                   setState(() {
@@ -167,7 +164,6 @@ class _AnaSafakEkraniState extends State<AnaSafakEkrani> {
     });
   }
 
-  // Verileri sıfırlayıp ilk kayıt ekranına dönme fonksiyonu
   Future<void> verileriSifirla() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     await prefs.clear();
@@ -347,7 +343,6 @@ class _AnaSafakEkraniState extends State<AnaSafakEkrani> {
         title: Text("$isim - Şafak Durumu"),
         centerTitle: true,
         actions: [
-          // Sağ üstte verileri sıfırlamak için ayar butonu
           IconButton(
             icon: const Icon(Icons.refresh),
             tooltip: "Bilgileri Sıfırla",
