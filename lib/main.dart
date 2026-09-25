@@ -1,10 +1,20 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
-void main() => runApp(const SafakSayarApp());
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  
+  // Uygulama açılmadan önce kaydedilmiş bir profil var mı diye kontrol edelim
+  SharedPreferences prefs = await SharedPreferences.getInstance();
+  bool kayitliMi = prefs.getBool('kayitliMi') ?? false;
+
+  runApp(SafakSayarApp(kayitliMi: kayitliMi));
+}
 
 class SafakSayarApp extends StatelessWidget {
-  const SafakSayarApp({super.key});
+  final bool kayitliMi;
+  const SafakSayarApp({super.key, required this.kayitliMi});
 
   @override
   Widget build(BuildContext context) {
@@ -15,11 +25,13 @@ class SafakSayarApp extends StatelessWidget {
         primarySwatch: Colors.orange,
         useMaterial3: true,
       ),
-      home: const ProfilKayitEkrani(),
+      // Eğer daha önceden kayıt yapıldıysa doğrudan AnaŞafak ekranını aç, yoksa Kayıt ekranını aç
+      home: kayitliMi ? const AnaSafakEkrani() : const ProfilKayitEkrani(),
     );
   }
 }
 
+// 1. Profil ve Kayıt Ekranı
 class ProfilKayitEkrani extends StatefulWidget {
   const ProfilKayitEkrani({super.key});
 
@@ -28,9 +40,30 @@ class ProfilKayitEkrani extends StatefulWidget {
 }
 
 class _ProfilKayitEkraniState extends State<ProfilKayitEkrani> {
-  final TextEditingController isimController = TextEditingController(text: "Mehmetçik");
+  final TextEditingController isimController = TextEditingController(text: "");
   String askerlikSuresi = "6 Ay";
-  DateTime sevkTarihi = DateTime.now().subtract(const Duration(days: 30));
+  DateTime sevkTarihi = DateTime.now();
+
+  Future<void> bilgileriKaydet() async {
+    if (isimController.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Lütfen isminizi giriniz!")),
+      );
+      return;
+    }
+
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    await prefs.setString('isim', isimController.text.trim());
+    await prefs.setString('askerlikSuresi', askerlikSuresi);
+    await prefs.setString('sevkTarihi', sevkTarihi.toIso8601String());
+    await prefs.setBool('kayitliMi', true);
+
+    // Ana ekrana yönlendir ve geri dönüşü engelle
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (context) => const AnaSafakEkrani()),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -46,7 +79,7 @@ class _ProfilKayitEkraniState extends State<ProfilKayitEkrani> {
           children: [
             TextField(
               controller: isimController,
-              decoration: const InputDecoration(labelText: "İsim", border: OutlineInputBorder()),
+              decoration: const InputDecoration(labelText: "İsim / Künye", border: OutlineInputBorder()),
             ),
             const SizedBox(height: 20),
             DropdownButtonFormField<String>(
@@ -73,6 +106,7 @@ class _ProfilKayitEkraniState extends State<ProfilKayitEkrani> {
                   initialDate: sevkTarihi,
                   firstDate: DateTime(2020),
                   lastDate: DateTime(2030),
+                  locale: const Locale('tr', 'TR'), // Türkçe takvim desteği
                 );
                 if (secilen != null) {
                   setState(() {
@@ -87,18 +121,7 @@ class _ProfilKayitEkraniState extends State<ProfilKayitEkrani> {
               height: 50,
               child: ElevatedButton(
                 style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white),
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => AnaSafakEkrani(
-                        isim: isimController.text,
-                        sevkTarihi: sevkTarihi,
-                        askerlikSuresiAy: askerlikSuresi == "6 Ay" ? 6 : 12,
-                      ),
-                    ),
-                  );
-                },
+                onPressed: bilgileriKaydet,
                 child: const Text("Kaydet ve Şafağı Hesapla", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
               ),
             ),
@@ -109,19 +132,51 @@ class _ProfilKayitEkraniState extends State<ProfilKayitEkrani> {
   }
 }
 
-class AnaSafakEkrani extends StatelessWidget {
-  final String isim;
-  final DateTime sevkTarihi;
-  final int askerlikSuresiAy;
+// 2. Ana Şafak Ekranı
+class AnaSafakEkrani extends StatefulWidget {
+  const AnaSafakEkrani({super.key});
 
-  const AnaSafakEkrani({
-    super.key,
-    required this.isim,
-    required this.sevkTarihi,
-    required this.askerlikSuresiAy,
-  });
+  @override
+  State<AnaSafakEkrani> createState() => _AnaSafakEkraniState();
+}
 
-  int get toplamGun => askerlikSuresiAy == 6 ? 180 : 360;
+class _AnaSafakEkraniState extends State<AnaSafakEkrani> {
+  String isim = "Mehmetçik";
+  int toplamGun = 180;
+  DateTime sevkTarihi = DateTime.now();
+  bool yukleniyor = true;
+
+  @override
+  void initState() {
+    super.initState();
+    verileriYukle();
+  }
+
+  Future<void> verileriYukle() async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    setState(() {
+      isim = prefs.getString('isim') ?? "Mehmetçik";
+      String sure = prefs.getString('askerlikSuresi') ?? "6 Ay";
+      toplamGun = (sure == "6 Ay") ? 180 : 360;
+      
+      String? tarihStr = prefs.getString('sevkTarihi');
+      if (tarihStr != null) {
+        sevkTarihi = DateTime.parse(tarihStr);
+      }
+      yukleniyor = false;
+    });
+  }
+
+  // Verileri sıfırlayıp ilk kayıt ekranına dönme fonksiyonu
+  Future<void> verileriSifirla() async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    await prefs.clear();
+    if (!mounted) return;
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (context) => const ProfilKayitEkrani()),
+    );
+  }
 
   int hesaplaKalanSafak() {
     DateTime terhisTarihi = sevkTarihi.add(Duration(days: toplamGun));
@@ -130,7 +185,6 @@ class AnaSafakEkrani extends StatelessWidget {
     return fark > 0 ? fark : 0;
   }
 
-  // 81'den büyükler için yüzlerce özgün, esprili ve küfürsüz söz havuzu
   String getRastgeleSoz() {
     final List<String> sozler = [
       "Şafak atar, güneşi doğar; bitmeyen askerlik yoktur $isim!",
@@ -146,7 +200,7 @@ class AnaSafakEkrani extends StatelessWidget {
       "Şafak sıkıştırdıkça bitişe yaklaşıyoruz, sabır!",
       "Bitmez denilen o şafaklar, gün gelecek tarihe karışacak.",
       "Yılmak yok $isim, bu vatan bizim!",
-      "Nöbet tutarken hayal kurmak serbesttir,aslan asker!",
+      "Nöbet tutarken hayal kurmak serbesttir, aslan asker!",
       "Bugün de bitti ya, geriye kalan her gün kârdır.",
       "Takvimin yaprakları düşerken, terhis sevinci yaklaşıyor.",
       "Güneş batar doğar, şafak elbet bir gün sıfırlanır.",
@@ -158,12 +212,10 @@ class AnaSafakEkrani extends StatelessWidget {
       "Sıkı dur $isim, az kaldı kavuşmaya.",
       "Gecenin en karanlık anı, şafağa en yakın andır.",
       "Şafak saymak bir sanatsa, biz bu sanatın ustasıyız.",
-      "Şafak zenginleştirir insanı, sabrı öğretir.",
       "Dağ başından memlekete selam olsun!",
       "Az kaldı bitiyor bu hasret, sabır yoldaşımız.",
       "Göz açıp kapayıncaya kadar geçer bu günler.",
       "Pes etmek yok, biz bu yola baş koyduk!",
-      "Şafak lambası yanıyor, bitişe az kalıyor.",
       "Askerin en güzel rüyası terhis belgesidir.",
       "Bir gün daha devirdik, aradan bir gün daha eksildi.",
       "Dostlar el sallıyor memleketten, şafak düşüyor ardına bile bakmadan.",
@@ -174,8 +226,6 @@ class AnaSafakEkrani extends StatelessWidget {
       "Her şafak yeni bir umut, yeni bir gündür.",
       "Bitmez denilen teskere, gün gelip kapıyı çalacak.",
       "Sık dişini $isim, az kaldı özlenen günlere.",
-      "Şafak sayarken kahveler içilir, bitişe doğru hayaller kuruşur.",
-      "Zaman nerede tıkandıysa orada açılacak, az kaldı.",
       "Memleket kokulu rüyalar görmeye çok az kaldı.",
       "Dağların ardında güneş var, şafak bitiyor inatla.",
       "Askerlik biter, dostluklar baki kalır.",
@@ -188,7 +238,6 @@ class AnaSafakEkrani extends StatelessWidget {
     return sozler[random.nextInt(sozler.length)];
   }
 
-  // 1'den 81'e kadar tam plaka sözleri listesi
   String getPlakaSozu(int kalan) {
     final Map<int, String> plakaSozleri = {
       1: "Ne boya ne badana, Şafak sadece 01 Adana 🥳",
@@ -285,12 +334,47 @@ class AnaSafakEkrani extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (yukleniyor) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+
     int kalanSafak = hesaplaKalanSafak();
 
     return Scaffold(
       appBar: AppBar(
         title: Text("$isim - Şafak Durumu"),
         centerTitle: true,
+        actions: [
+          // Sağ üstte verileri sıfırlamak için ayar butonu
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            tooltip: "Bilgileri Sıfırla",
+            onPressed: () {
+              showDialog(
+                context: context,
+                builder: (context) => AlertDialog(
+                  title: const Text("Bilgileri Sıfırla"),
+                  content: const Text("Askerlik bilgilerinizi sıfırlamak istediğinize emin misiniz?"),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: const Text("İptal"),
+                    ),
+                    TextButton(
+                      onPressed: () {
+                        Navigator.pop(context);
+                        verileriSifirla();
+                      },
+                      child: const Text("Sıfırla", style: TextStyle(color: Colors.red)),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        ],
       ),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
