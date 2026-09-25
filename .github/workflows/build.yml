@@ -3,8 +3,6 @@ name: Build APK
 on:
   push:
     branches: [ "main", "master" ]
-  pull_request:
-    branches: [ "main", "master" ]
   workflow_dispatch:
 
 jobs:
@@ -27,6 +25,9 @@ jobs:
           channel: 'stable'
           cache: true
 
+      - name: Create Android files if missing
+        run: flutter create . --org com.safaksayar --project-name safak_sayar --platforms=android
+
       - name: Install dependencies
         run: flutter pub get
 
@@ -38,3 +39,4 @@ jobs:
         with:
           name: app-release
           path: build/app/outputs/flutter-apk/app-release.apk
+          
